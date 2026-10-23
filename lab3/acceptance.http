@@ -1,0 +1,1125 @@
+# ЛР3, вариант 11. Приём вторсырья.
+# Запускать весь файл: Run All Requests in File, No Environment.
+# Приложение должно работать на 127.0.0.1:8080.
+# Файл создаёт собственные данные с уникальным email и удаляет их в конце.
+# Ожидаемые 400, 404 и 409 являются успешными отрицательными проверками.
+# При прерывании могут остаться тестовые записи с пометкой ЛР3.
+# Повторный полный запуск создаёт новый набор; исходные ID не зашиты.
+
+@lab3_base = http://127.0.0.1:8080
+
+
+### 01. Исходный список: users [200]
+< {%
+    const keys = ["userId", "typeId", "pointId", "batchAId", "bonusAId", "batchBId", "bonusBId", "batchCId", "bonusCId", "scratchBatchId", "scratchBonusId"];
+    keys.forEach(key => client.global.set("lab3_" + key, "0"));
+    client.global.set("lab3_today", "1970-01-01");
+    client.global.set("lab3_receivedAt", "");
+    client.global.set("lab3_passed", "0");
+    client.global.set("lab3_run", String($uuid).toLowerCase());
+    client.log("Тестовый запуск ЛР3: " + client.global.get("lab3_run"));
+%}
+GET {{lab3_base}}/api/users
+
+> {%
+    const b = response.body;
+    if (response.status === 200 && Array.isArray(b)) {
+        client.global.set("lab3_baseline_users",
+            JSON.stringify(b.map(item => Number(item.id)).sort((a, z) => a - z)));
+    }
+    client.test("01. Исходный список: users [200]", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен другой статус");
+        client.assert(Array.isArray(b), "Ожидался JSON-массив");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 02. Исходный список: recycling-types [200]
+GET {{lab3_base}}/api/recycling-types
+
+> {%
+    const b = response.body;
+    if (response.status === 200 && Array.isArray(b)) {
+        client.global.set("lab3_baseline_recycling-types",
+            JSON.stringify(b.map(item => Number(item.id)).sort((a, z) => a - z)));
+    }
+    client.test("02. Исходный список: recycling-types [200]", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен другой статус");
+        client.assert(Array.isArray(b), "Ожидался JSON-массив");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 03. Исходный список: collection-points [200]
+GET {{lab3_base}}/api/collection-points
+
+> {%
+    const b = response.body;
+    if (response.status === 200 && Array.isArray(b)) {
+        client.global.set("lab3_baseline_collection-points",
+            JSON.stringify(b.map(item => Number(item.id)).sort((a, z) => a - z)));
+    }
+    client.test("03. Исходный список: collection-points [200]", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен другой статус");
+        client.assert(Array.isArray(b), "Ожидался JSON-массив");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 04. Исходный список: recycling-batches [200]
+GET {{lab3_base}}/api/recycling-batches
+
+> {%
+    const b = response.body;
+    if (response.status === 200 && Array.isArray(b)) {
+        client.global.set("lab3_baseline_recycling-batches",
+            JSON.stringify(b.map(item => Number(item.id)).sort((a, z) => a - z)));
+    }
+    client.test("04. Исходный список: recycling-batches [200]", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен другой статус");
+        client.assert(Array.isArray(b), "Ожидался JSON-массив");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 05. Исходный список: bonus-entries [200]
+GET {{lab3_base}}/api/bonus-entries
+
+> {%
+    const b = response.body;
+    if (response.status === 200 && Array.isArray(b)) {
+        client.global.set("lab3_baseline_bonus-entries",
+            JSON.stringify(b.map(item => Number(item.id)).sort((a, z) => a - z)));
+    }
+    client.test("05. Исходный список: bonus-entries [200]", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен другой статус");
+        client.assert(Array.isArray(b), "Ожидался JSON-массив");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 06. CRUD: создать пользователя [201]
+POST {{lab3_base}}/api/users
+Content-Type: application/json
+
+{
+  "name": "ЛР3 {{lab3_run}}",
+  "email": "lab3-{{lab3_run}}@example.com"
+}
+
+> {%
+    const b = response.body;
+    if (response.status === 201 && b && (b.email === "lab3-" + client.global.get("lab3_run") + "@example.com") && Number(b.id) > 0
+        && !JSON.parse(client.global.get("lab3_baseline_users") || "[]").includes(Number(b.id))) {
+        client.global.set("lab3_userId", String(b.id));
+    }
+    client.test("06. CRUD: создать пользователя [201]", function () {
+        client.assert(response.status === 201, "Ожидался HTTP 201, получен другой статус");
+        client.assert(Number(b.id) === Number(client.global.get("lab3_userId")) && Number(client.global.get("lab3_userId")) > 0, "ID пользователя не сохранён");
+        client.assert(b.email === "lab3-" + client.global.get("lab3_run") + "@example.com", "Email отличается от тестового");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 07. CRUD: прочитать пользователя [200]
+GET {{lab3_base}}/api/users/{{lab3_userId}}
+
+> {%
+    const b = response.body;
+    client.test("07. CRUD: прочитать пользователя [200]", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен другой статус");
+        client.assert(Number(b.id) === Number(client.global.get("lab3_userId")), "Неверный пользователь");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 08. CRUD: изменить пользователя [200]
+PATCH {{lab3_base}}/api/users/{{lab3_userId}}
+Content-Type: application/json
+
+{
+  "name": "Проверка ЛР3 обновлена"
+}
+
+> {%
+    const b = response.body;
+    client.test("08. CRUD: изменить пользователя [200]", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен другой статус");
+        client.assert(b.name === "Проверка ЛР3 обновлена", "Имя не обновилось");
+        client.assert(b.email === "lab3-" + client.global.get("lab3_run") + "@example.com", "PATCH изменил email");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 09. Отказать в повторном email [409]
+POST {{lab3_base}}/api/users
+Content-Type: application/json
+
+{
+  "name": "Дубликат ЛР3",
+  "email": "lab3-{{lab3_run}}@example.com"
+}
+
+> {%
+    const b = response.body;
+    client.test("09. Отказать в повторном email [409]", function () {
+        client.assert(response.status === 409, "Ожидался HTTP 409, получен другой статус");
+        client.assert(b.status === 409, "Неверный status в JSON ошибки");
+        client.assert(b.message.includes("email"), "Ожидалась ошибка уникальности email");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 10. CRUD: создать вид вторсырья [201]
+POST {{lab3_base}}/api/recycling-types
+Content-Type: application/json
+
+{
+  "name": "Тип ЛР3 {{lab3_run}}",
+  "unit": "кг",
+  "pointsPerKg": 3.0
+}
+
+> {%
+    const b = response.body;
+    if (response.status === 201 && b && (b.name === "Тип ЛР3 " + client.global.get("lab3_run")) && Number(b.id) > 0
+        && !JSON.parse(client.global.get("lab3_baseline_recycling-types") || "[]").includes(Number(b.id))) {
+        client.global.set("lab3_typeId", String(b.id));
+    }
+    client.test("10. CRUD: создать вид вторсырья [201]", function () {
+        client.assert(response.status === 201, "Ожидался HTTP 201, получен другой статус");
+        client.assert(Number(b.id) === Number(client.global.get("lab3_typeId")) && Number(client.global.get("lab3_typeId")) > 0, "ID вида не сохранён");
+        client.assert(Number(b.pointsPerKg) === 3, "Неверная ставка");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 11. CRUD: прочитать вид вторсырья [200]
+GET {{lab3_base}}/api/recycling-types/{{lab3_typeId}}
+
+> {%
+    const b = response.body;
+    client.test("11. CRUD: прочитать вид вторсырья [200]", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен другой статус");
+        client.assert(Number(b.id) === Number(client.global.get("lab3_typeId")) && b.unit === "кг", "Неверный вид вторсырья");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 12. CRUD: создать пункт со связью на вид [201]
+POST {{lab3_base}}/api/collection-points
+Content-Type: application/json
+
+{
+  "address": "Пункт ЛР3 {{lab3_run}}",
+  "recyclingTypeIds": [
+    {{lab3_typeId}}
+  ],
+  "available": true,
+  "dailyWeightLimit": 15.0
+}
+
+> {%
+    const b = response.body;
+    if (response.status === 201 && b && (b.address === "Пункт ЛР3 " + client.global.get("lab3_run")) && Number(b.id) > 0
+        && !JSON.parse(client.global.get("lab3_baseline_collection-points") || "[]").includes(Number(b.id))) {
+        client.global.set("lab3_pointId", String(b.id));
+    }
+    client.test("12. CRUD: создать пункт со связью на вид [201]", function () {
+        client.assert(response.status === 201, "Ожидался HTTP 201, получен другой статус");
+        client.assert(Number(b.id) === Number(client.global.get("lab3_pointId")) && Number(client.global.get("lab3_pointId")) > 0, "ID пункта не сохранён");
+        client.assert(b.recyclingTypeIds.length === 1 && Number(b.recyclingTypeIds[0]) === Number(client.global.get("lab3_typeId")), "Неверная связь пункта и вида");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 13. CRUD: прочитать пункт и его связи [200]
+GET {{lab3_base}}/api/collection-points/{{lab3_pointId}}
+
+> {%
+    const b = response.body;
+    client.test("13. CRUD: прочитать пункт и его связи [200]", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен другой статус");
+        client.assert(b.recyclingTypeIds.length === 1 && Number(b.recyclingTypeIds[0]) === Number(client.global.get("lab3_typeId")), "Связь не сохранилась");
+        client.assert(Number(b.dailyWeightLimit) === 15 && b.available === true, "Неверные свойства пункта");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 14. CRUD: изменить адрес пункта [200]
+PATCH {{lab3_base}}/api/collection-points/{{lab3_pointId}}
+Content-Type: application/json
+
+{
+  "address": "Пункт проверки транзакций ЛР3"
+}
+
+> {%
+    const b = response.body;
+    client.test("14. CRUD: изменить адрес пункта [200]", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен другой статус");
+        client.assert(b.address === "Пункт проверки транзакций ЛР3", "Адрес не обновился");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 15. Операция 4: подобрать пункт для 10 кг [200]
+GET {{lab3_base}}/api/operations/available-points?typeId={{lab3_typeId}}&weightKg=10.000
+
+> {%
+    const b = response.body;
+    client.test("15. Операция 4: подобрать пункт для 10 кг [200]", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен другой статус");
+        client.assert(Array.isArray(b) && b.length === 1 && Number(b[0].id) === Number(client.global.get("lab3_pointId")), "Не найден единственный подходящий пункт");
+        client.assert(Number(b[0].freeWeightKg) === 15 && Number(b[0].estimatedPoints) === 30, "Неверный свободный вес или расчёт бонуса");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 16. Операция 1: принять 10 кг и создать бонус [201]
+POST {{lab3_base}}/api/operations/accept
+Content-Type: application/json
+
+{
+  "userId": {{lab3_userId}},
+  "pointId": {{lab3_pointId}},
+  "typeId": {{lab3_typeId}},
+  "weightKg": 10.0
+}
+
+> {%
+    const b = response.body;
+    if (response.status === 201 && b && b.batch && b.bonus
+        && Number(b.batch.userId) === Number(client.global.get("lab3_userId")) && Number(client.global.get("lab3_userId")) > 0
+        && Number(b.batch.pointId) === Number(client.global.get("lab3_pointId")) && Number(client.global.get("lab3_pointId")) > 0
+        && Number(b.batch.typeId) === Number(client.global.get("lab3_typeId"))
+        && Number(b.bonus.batchId) === Number(b.batch.id)
+        && !JSON.parse(client.global.get("lab3_baseline_recycling-batches") || "[]").includes(Number(b.batch.id))
+        && !JSON.parse(client.global.get("lab3_baseline_bonus-entries") || "[]").includes(Number(b.bonus.id))) {
+        client.global.set("lab3_batchAId", String(b.batch.id));
+        client.global.set("lab3_bonusAId", String(b.bonus.id));
+        client.global.set("lab3_receivedAt", b.batch.receivedAt);
+        const utc = Date.parse(b.batch.receivedAt.replace(/(\.\d{3})\d+Z$/, "$1Z"));
+        client.global.set("lab3_today", new Date(utc + 3 * 60 * 60 * 1000).toISOString().slice(0, 10));
+    }
+    client.test("16. Операция 1: принять 10 кг и создать бонус [201]", function () {
+        client.assert(response.status === 201, "Ожидался HTTP 201, получен другой статус");
+        client.assert(Number(b.batch.id) === Number(client.global.get("lab3_batchAId")) && Number(client.global.get("lab3_batchAId")) > 0, "ID партии не сохранён");
+        client.assert(Number(b.bonus.id) === Number(client.global.get("lab3_bonusAId")) && Number(client.global.get("lab3_bonusAId")) > 0, "ID бонуса не сохранён");
+        client.assert(Number(b.batch.weightKg) === 10 && b.batch.status === "ACCEPTED", "Неверная партия");
+        client.assert(Number(b.bonus.points) === 30 && b.bonus.status === "PENDING", "Бонус не создан или неверно рассчитан");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 17. Прочитать сохранённую партию [200]
+GET {{lab3_base}}/api/recycling-batches/{{lab3_batchAId}}
+
+> {%
+    const b = response.body;
+    client.test("17. Прочитать сохранённую партию [200]", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен другой статус");
+        client.assert(Number(b.weightKg) === 10 && Number(b.pointsPerKg) === 3, "Партия не сохранилась правильно");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 18. Прочитать сохранённый бонус [200]
+GET {{lab3_base}}/api/bonus-entries/{{lab3_bonusAId}}
+
+> {%
+    const b = response.body;
+    client.test("18. Прочитать сохранённый бонус [200]", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен другой статус");
+        client.assert(Number(b.batchId) === Number(client.global.get("lab3_batchAId")) && Number(b.points) === 30 && b.status === "PENDING", "Бонус не сохранился правильно");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 19. Отказать в повторном бонусе [409]
+POST {{lab3_base}}/api/bonus-entries
+Content-Type: application/json
+
+{
+  "batchId": {{lab3_batchAId}}
+}
+
+> {%
+    const b = response.body;
+    client.test("19. Отказать в повторном бонусе [409]", function () {
+        client.assert(response.status === 409, "Ожидался HTTP 409, получен другой статус");
+        client.assert(b.status === 409, "Неверный status в JSON ошибки");
+        client.assert(b.message.includes("бонус"), "Ожидался отказ в повторном бонусе");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 20. Отказать в приёме сверх лимита [409]
+POST {{lab3_base}}/api/operations/accept
+Content-Type: application/json
+
+{
+  "userId": {{lab3_userId}},
+  "pointId": {{lab3_pointId}},
+  "typeId": {{lab3_typeId}},
+  "weightKg": 6.0
+}
+
+> {%
+    const b = response.body;
+    client.test("20. Отказать в приёме сверх лимита [409]", function () {
+        client.assert(response.status === 409, "Ожидался HTTP 409, получен другой статус");
+        client.assert(b.status === 409, "Неверный status в JSON ошибки");
+        client.assert(b.message.includes("лимит"), "Ожидалась ошибка лимита");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 21. Убедиться, что отказ не создал партию [200]
+GET {{lab3_base}}/api/recycling-batches
+
+> {%
+    const b = response.body;
+    client.test("21. Убедиться, что отказ не создал партию [200]", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен другой статус");
+        client.assert(b.filter(batch => Number(batch.pointId) === Number(client.global.get("lab3_pointId"))).length === 1, "После отказа появилась лишняя партия");
+        client.assert(b.some(batch => Number(batch.id) === Number(client.global.get("lab3_batchAId")) && Number(batch.weightKg) === 10), "Исходная партия изменилась");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 22. CRUD: изменить ставку с 3 до 5 [200]
+PATCH {{lab3_base}}/api/recycling-types/{{lab3_typeId}}
+Content-Type: application/json
+
+{
+  "pointsPerKg": 5.0
+}
+
+> {%
+    const b = response.body;
+    client.test("22. CRUD: изменить ставку с 3 до 5 [200]", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен другой статус");
+        client.assert(Number(b.pointsPerKg) === 5, "Ставка не обновилась");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 23. Операция 2: исправить 10 кг на 12 кг [200]
+POST {{lab3_base}}/api/operations/batches/{{lab3_batchAId}}/correct-weight
+Content-Type: application/json
+
+{
+  "weightKg": 12.0
+}
+
+> {%
+    const b = response.body;
+    client.test("23. Операция 2: исправить 10 кг на 12 кг [200]", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен другой статус");
+        client.assert(Number(b.batch.weightKg) === 12, "Вес не исправлен");
+        client.assert(Number(b.batch.pointsPerKg) === 3 && Number(b.bonus.points) === 36, "Пересчёт должен использовать сохранённую ставку 3");
+        client.assert(b.bonus.status === "PENDING", "Неверный статус пересчитанного бонуса");
+        client.assert(b.batch.receivedAt === client.global.get("lab3_receivedAt"), "Корректировка изменила время приёма");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 24. Прочитать пересчитанный бонус [200]
+GET {{lab3_base}}/api/bonus-entries/{{lab3_bonusAId}}
+
+> {%
+    const b = response.body;
+    client.test("24. Прочитать пересчитанный бонус [200]", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен другой статус");
+        client.assert(Number(b.points) === 36 && b.status === "PENDING", "Пересчитанный бонус не сохранился");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 25. Отказать в коррекции сверх лимита [409]
+POST {{lab3_base}}/api/operations/batches/{{lab3_batchAId}}/correct-weight
+Content-Type: application/json
+
+{
+  "weightKg": 16.0
+}
+
+> {%
+    const b = response.body;
+    client.test("25. Отказать в коррекции сверх лимита [409]", function () {
+        client.assert(response.status === 409, "Ожидался HTTP 409, получен другой статус");
+        client.assert(b.status === 409, "Неверный status в JSON ошибки");
+        client.assert(b.message.includes("лимит"), "Ожидалась ошибка лимита");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 26. Проверить вес после отказа [200]
+GET {{lab3_base}}/api/recycling-batches/{{lab3_batchAId}}
+
+> {%
+    const b = response.body;
+    client.test("26. Проверить вес после отказа [200]", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен другой статус");
+        client.assert(Number(b.weightKg) === 12 && Number(b.pointsPerKg) === 3, "Отказ изменил партию");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 27. Проверить бонус после отказа [200]
+GET {{lab3_base}}/api/bonus-entries/{{lab3_bonusAId}}
+
+> {%
+    const b = response.body;
+    client.test("27. Проверить бонус после отказа [200]", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен другой статус");
+        client.assert(Number(b.points) === 36 && b.status === "PENDING", "Отказ изменил бонус");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 28. Отказать в весе с лишней точностью [400]
+POST {{lab3_base}}/api/operations/batches/{{lab3_batchAId}}/correct-weight
+Content-Type: application/json
+
+{
+  "weightKg": 1.0001
+}
+
+> {%
+    const b = response.body;
+    client.test("28. Отказать в весе с лишней точностью [400]", function () {
+        client.assert(response.status === 400, "Ожидался HTTP 400, получен другой статус");
+        client.assert(b.status === 400, "Неверный status в JSON ошибки");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 29. Подбор должен учитывать уже занятые 12 кг [200]
+GET {{lab3_base}}/api/operations/available-points?typeId={{lab3_typeId}}&weightKg=4.000
+
+> {%
+    const b = response.body;
+    client.test("29. Подбор должен учитывать уже занятые 12 кг [200]", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен другой статус");
+        client.assert(Array.isArray(b) && b.length === 0, "Пункт с остатком 3 кг не должен принимать 4 кг");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 30. Подбор должен разрешать точное заполнение лимита [200]
+GET {{lab3_base}}/api/operations/available-points?typeId={{lab3_typeId}}&weightKg=3.000
+
+> {%
+    const b = response.body;
+    client.test("30. Подбор должен разрешать точное заполнение лимита [200]", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен другой статус");
+        client.assert(b.length === 1 && Number(b[0].id) === Number(client.global.get("lab3_pointId")), "Пункт с остатком 3 кг должен принимать 3 кг");
+        client.assert(Number(b[0].freeWeightKg) === 3 && Number(b[0].estimatedPoints) === 15, "Неверный остаток или расчёт по новой ставке");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 31. Создать второй ожидающий бонус для общего начисления [201]
+POST {{lab3_base}}/api/operations/accept
+Content-Type: application/json
+
+{
+  "userId": {{lab3_userId}},
+  "pointId": {{lab3_pointId}},
+  "typeId": {{lab3_typeId}},
+  "weightKg": 2.0
+}
+
+> {%
+    const b = response.body;
+    if (response.status === 201 && b && b.batch && b.bonus
+        && Number(b.batch.userId) === Number(client.global.get("lab3_userId")) && Number(client.global.get("lab3_userId")) > 0
+        && Number(b.batch.pointId) === Number(client.global.get("lab3_pointId")) && Number(client.global.get("lab3_pointId")) > 0
+        && Number(b.batch.typeId) === Number(client.global.get("lab3_typeId"))
+        && Number(b.bonus.batchId) === Number(b.batch.id)
+        && !JSON.parse(client.global.get("lab3_baseline_recycling-batches") || "[]").includes(Number(b.batch.id))
+        && !JSON.parse(client.global.get("lab3_baseline_bonus-entries") || "[]").includes(Number(b.bonus.id))) {
+        client.global.set("lab3_batchBId", String(b.batch.id));
+        client.global.set("lab3_bonusBId", String(b.bonus.id));
+    }
+    client.test("31. Создать второй ожидающий бонус для общего начисления [201]", function () {
+        client.assert(response.status === 201, "Ожидался HTTP 201, получен другой статус");
+        client.assert(Number(b.batch.id) === Number(client.global.get("lab3_batchBId")) && Number(client.global.get("lab3_batchBId")) > 0, "ID второй партии не сохранён");
+        client.assert(Number(b.bonus.points) === 10 && b.bonus.status === "PENDING", "Неверный второй бонус");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 32. Операция 5: сводка до начисления [200]
+GET {{lab3_base}}/api/operations/users/{{lab3_userId}}/summary?from={{lab3_today}}&to={{lab3_today}}
+
+> {%
+    const b = response.body;
+    client.test("32. Операция 5: сводка до начисления [200]", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен другой статус");
+        client.assert(Number(b.acceptedCount) === 2 && Number(b.cancelledCount) === 0, "Неверное количество партий");
+        client.assert(Number(b.acceptedWeightKg) === 14 && Number(b.pendingPoints) === 46 && Number(b.accruedPoints) === 0, "Неверные итоги сводки");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 33. Операция 3: начислить два ожидающих бонуса [200]
+POST {{lab3_base}}/api/operations/users/{{lab3_userId}}/accrue-bonuses
+Content-Type: application/json
+
+{
+  "from": "{{lab3_today}}",
+  "to": "{{lab3_today}}"
+}
+
+> {%
+    const b = response.body;
+    client.test("33. Операция 3: начислить два ожидающих бонуса [200]", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен другой статус");
+        client.assert(Number(b.count) === 2 && Number(b.totalPoints) === 46, "Ожидалось начисление двух бонусов на 46 баллов");
+        client.assert(b.bonusIds.length === 2 && b.bonusIds.map(Number).includes(Number(client.global.get("lab3_bonusAId"))) && b.bonusIds.map(Number).includes(Number(client.global.get("lab3_bonusBId"))), "Начислены неверные бонусы");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 34. Прочитать начисленный бонус [200]
+GET {{lab3_base}}/api/bonus-entries/{{lab3_bonusAId}}
+
+> {%
+    const b = response.body;
+    client.test("34. Прочитать начисленный бонус [200]", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен другой статус");
+        client.assert(b.status === "ACCRUED" && Number(b.points) === 36, "Начисление не сохранилось");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 35. Прочитать второй начисленный бонус [200]
+GET {{lab3_base}}/api/bonus-entries/{{lab3_bonusBId}}
+
+> {%
+    const b = response.body;
+    client.test("35. Прочитать второй начисленный бонус [200]", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен другой статус");
+        client.assert(b.status === "ACCRUED" && Number(b.points) === 10, "Второе начисление не сохранилось");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 36. Отказать в повторном начислении [409]
+POST {{lab3_base}}/api/operations/users/{{lab3_userId}}/accrue-bonuses
+Content-Type: application/json
+
+{
+  "from": "{{lab3_today}}",
+  "to": "{{lab3_today}}"
+}
+
+> {%
+    const b = response.body;
+    client.test("36. Отказать в повторном начислении [409]", function () {
+        client.assert(response.status === 409, "Ожидался HTTP 409, получен другой статус");
+        client.assert(b.status === 409, "Неверный status в JSON ошибки");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 37. Отказать в исправлении после начисления [409]
+POST {{lab3_base}}/api/operations/batches/{{lab3_batchAId}}/correct-weight
+Content-Type: application/json
+
+{
+  "weightKg": 11.0
+}
+
+> {%
+    const b = response.body;
+    client.test("37. Отказать в исправлении после начисления [409]", function () {
+        client.assert(response.status === 409, "Ожидался HTTP 409, получен другой статус");
+        client.assert(b.status === 409, "Неверный status в JSON ошибки");
+        client.assert(b.message.includes("начисл"), "Ожидался запрет изменения начисленного бонуса");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 38. Запретить возврат начисленного бонуса в PENDING [409]
+PATCH {{lab3_base}}/api/bonus-entries/{{lab3_bonusAId}}
+Content-Type: application/json
+
+{
+  "status": "PENDING"
+}
+
+> {%
+    const b = response.body;
+    client.test("38. Запретить возврат начисленного бонуса в PENDING [409]", function () {
+        client.assert(response.status === 409, "Ожидался HTTP 409, получен другой статус");
+        client.assert(b.status === 409, "Неверный status в JSON ошибки");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 39. Проверить сводку после начисления [200]
+GET {{lab3_base}}/api/operations/users/{{lab3_userId}}/summary?from={{lab3_today}}&to={{lab3_today}}
+
+> {%
+    const b = response.body;
+    client.test("39. Проверить сводку после начисления [200]", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен другой статус");
+        client.assert(Number(b.acceptedWeightKg) === 14 && Number(b.pendingPoints) === 0 && Number(b.accruedPoints) === 46, "Итоги после начисления неверны");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 40. Отказать в обратном диапазоне дат [400]
+GET {{lab3_base}}/api/operations/users/{{lab3_userId}}/summary?from=2100-01-02&to=2000-01-01
+
+> {%
+    const b = response.body;
+    client.test("40. Отказать в обратном диапазоне дат [400]", function () {
+        client.assert(response.status === 400, "Ожидался HTTP 400, получен другой статус");
+        client.assert(b.status === 400, "Неверный status в JSON ошибки");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 41. Отменить партию вместе с бонусом [200]
+PATCH {{lab3_base}}/api/recycling-batches/{{lab3_batchAId}}
+Content-Type: application/json
+
+{
+  "status": "CANCELLED"
+}
+
+> {%
+    const b = response.body;
+    client.test("41. Отменить партию вместе с бонусом [200]", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен другой статус");
+        client.assert(b.status === "CANCELLED", "Партия не отменена");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 42. Проверить автоматическую отмену бонуса [200]
+GET {{lab3_base}}/api/bonus-entries/{{lab3_bonusAId}}
+
+> {%
+    const b = response.body;
+    client.test("42. Проверить автоматическую отмену бонуса [200]", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен другой статус");
+        client.assert(b.status === "CANCELLED" && Number(b.points) === 36, "Связанный бонус не отменён");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 43. Проверить сводку после отмены [200]
+GET {{lab3_base}}/api/operations/users/{{lab3_userId}}/summary?from={{lab3_today}}&to={{lab3_today}}
+
+> {%
+    const b = response.body;
+    client.test("43. Проверить сводку после отмены [200]", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен другой статус");
+        client.assert(Number(b.acceptedCount) === 1 && Number(b.cancelledCount) === 1, "Неверные количества после отмены");
+        client.assert(Number(b.acceptedWeightKg) === 2 && Number(b.cancelledWeightKg) === 12, "Неверный вес после отмены");
+        client.assert(Number(b.accruedPoints) === 10 && Number(b.cancelledPoints) === 36, "Отмена должна затронуть только бонус отменяемой партии");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 44. Проверить освобождение лимита и новую ставку [200]
+GET {{lab3_base}}/api/operations/available-points?typeId={{lab3_typeId}}&weightKg=13.000
+
+> {%
+    const b = response.body;
+    client.test("44. Проверить освобождение лимита и новую ставку [200]", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен другой статус");
+        client.assert(b.length === 1 && Number(b[0].id) === Number(client.global.get("lab3_pointId")), "Пункт не найден после отмены");
+        client.assert(Number(b[0].freeWeightKg) === 13 && Number(b[0].estimatedPoints) === 65, "Лимит не освободился или ставка не обновилась");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 45. Принять новую партию по ставке 5 [201]
+POST {{lab3_base}}/api/operations/accept
+Content-Type: application/json
+
+{
+  "userId": {{lab3_userId}},
+  "pointId": {{lab3_pointId}},
+  "typeId": {{lab3_typeId}},
+  "weightKg": 6.0
+}
+
+> {%
+    const b = response.body;
+    if (response.status === 201 && b && b.batch && b.bonus
+        && Number(b.batch.userId) === Number(client.global.get("lab3_userId")) && Number(client.global.get("lab3_userId")) > 0
+        && Number(b.batch.pointId) === Number(client.global.get("lab3_pointId")) && Number(client.global.get("lab3_pointId")) > 0
+        && Number(b.batch.typeId) === Number(client.global.get("lab3_typeId"))
+        && Number(b.bonus.batchId) === Number(b.batch.id)
+        && !JSON.parse(client.global.get("lab3_baseline_recycling-batches") || "[]").includes(Number(b.batch.id))
+        && !JSON.parse(client.global.get("lab3_baseline_bonus-entries") || "[]").includes(Number(b.bonus.id))) {
+        client.global.set("lab3_batchCId", String(b.batch.id));
+        client.global.set("lab3_bonusCId", String(b.bonus.id));
+    }
+    client.test("45. Принять новую партию по ставке 5 [201]", function () {
+        client.assert(response.status === 201, "Ожидался HTTP 201, получен другой статус");
+        client.assert(Number(b.batch.id) === Number(client.global.get("lab3_batchCId")) && Number(client.global.get("lab3_batchCId")) > 0, "ID новой партии не сохранён");
+        client.assert(Number(b.batch.pointsPerKg) === 5 && Number(b.bonus.points) === 30 && b.bonus.status === "PENDING", "Новая партия должна использовать ставку 5");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 46. CRUD: создать отдельную партию [201]
+POST {{lab3_base}}/api/recycling-batches
+Content-Type: application/json
+
+{
+  "userId": {{lab3_userId}},
+  "pointId": {{lab3_pointId}},
+  "typeId": {{lab3_typeId}},
+  "weightKg": 1.0
+}
+
+> {%
+    const b = response.body;
+    if (response.status === 201 && b && (Number(b.userId) === Number(client.global.get("lab3_userId")) && Number(b.pointId) === Number(client.global.get("lab3_pointId"))) && Number(b.id) > 0
+        && !JSON.parse(client.global.get("lab3_baseline_recycling-batches") || "[]").includes(Number(b.id))) {
+        client.global.set("lab3_scratchBatchId", String(b.id));
+    }
+    client.test("46. CRUD: создать отдельную партию [201]", function () {
+        client.assert(response.status === 201, "Ожидался HTTP 201, получен другой статус");
+        client.assert(Number(b.id) === Number(client.global.get("lab3_scratchBatchId")) && Number(client.global.get("lab3_scratchBatchId")) > 0, "ID CRUD-партии не сохранён");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 47. CRUD: изменить отдельную партию [200]
+PATCH {{lab3_base}}/api/recycling-batches/{{lab3_scratchBatchId}}
+Content-Type: application/json
+
+{
+  "weightKg": 2.0
+}
+
+> {%
+    const b = response.body;
+    client.test("47. CRUD: изменить отдельную партию [200]", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен другой статус");
+        client.assert(Number(b.weightKg) === 2, "Вес CRUD-партии не изменился");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 48. CRUD: прочитать отдельную партию [200]
+GET {{lab3_base}}/api/recycling-batches/{{lab3_scratchBatchId}}
+
+> {%
+    const b = response.body;
+    client.test("48. CRUD: прочитать отдельную партию [200]", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен другой статус");
+        client.assert(Number(b.weightKg) === 2 && Number(b.pointsPerKg) === 5, "Неверная CRUD-партия");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 49. CRUD: создать отдельный бонус [201]
+POST {{lab3_base}}/api/bonus-entries
+Content-Type: application/json
+
+{
+  "batchId": {{lab3_scratchBatchId}}
+}
+
+> {%
+    const b = response.body;
+    if (response.status === 201 && b && (Number(b.batchId) === Number(client.global.get("lab3_scratchBatchId"))) && Number(b.id) > 0
+        && !JSON.parse(client.global.get("lab3_baseline_bonus-entries") || "[]").includes(Number(b.id))) {
+        client.global.set("lab3_scratchBonusId", String(b.id));
+    }
+    client.test("49. CRUD: создать отдельный бонус [201]", function () {
+        client.assert(response.status === 201, "Ожидался HTTP 201, получен другой статус");
+        client.assert(Number(b.id) === Number(client.global.get("lab3_scratchBonusId")) && Number(client.global.get("lab3_scratchBonusId")) > 0, "ID CRUD-бонуса не сохранён");
+        client.assert(Number(b.points) === 10 && b.status === "PENDING", "Неверный CRUD-бонус");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 50. CRUD: изменить отдельный бонус [200]
+PATCH {{lab3_base}}/api/bonus-entries/{{lab3_scratchBonusId}}
+Content-Type: application/json
+
+{
+  "status": "ACCRUED"
+}
+
+> {%
+    const b = response.body;
+    client.test("50. CRUD: изменить отдельный бонус [200]", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен другой статус");
+        client.assert(b.status === "ACCRUED" && Number(b.points) === 10, "CRUD-бонус не изменился");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 51. CRUD: прочитать отдельный бонус [200]
+GET {{lab3_base}}/api/bonus-entries/{{lab3_scratchBonusId}}
+
+> {%
+    const b = response.body;
+    client.test("51. CRUD: прочитать отдельный бонус [200]", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен другой статус");
+        client.assert(b.status === "ACCRUED" && Number(b.points) === 10, "Изменение CRUD-бонуса не сохранилось");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 52. CRUD: удалить отдельный бонус [204]
+DELETE {{lab3_base}}/api/bonus-entries/{{lab3_scratchBonusId}}
+
+> {%
+    const b = response.body;
+    client.test("52. CRUD: удалить отдельный бонус [204]", function () {
+        client.assert(response.status === 204, "Ожидался HTTP 204, получен другой статус");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 53. Удалённый бонус должен вернуть 404 [404]
+GET {{lab3_base}}/api/bonus-entries/{{lab3_scratchBonusId}}
+
+> {%
+    const b = response.body;
+    client.test("53. Удалённый бонус должен вернуть 404 [404]", function () {
+        client.assert(response.status === 404, "Ожидался HTTP 404, получен другой статус");
+        client.assert(b.status === 404, "Неверный status в JSON ошибки");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 54. CRUD: удалить отдельную партию [204]
+DELETE {{lab3_base}}/api/recycling-batches/{{lab3_scratchBatchId}}
+
+> {%
+    const b = response.body;
+    client.test("54. CRUD: удалить отдельную партию [204]", function () {
+        client.assert(response.status === 204, "Ожидался HTTP 204, получен другой статус");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 55. Удалённая партия должна вернуть 404 [404]
+GET {{lab3_base}}/api/recycling-batches/{{lab3_scratchBatchId}}
+
+> {%
+    const b = response.body;
+    client.test("55. Удалённая партия должна вернуть 404 [404]", function () {
+        client.assert(response.status === 404, "Ожидался HTTP 404, получен другой статус");
+        client.assert(b.status === 404, "Неверный status в JSON ошибки");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 56. CRUD: удалить пункт и связанные партии [204]
+DELETE {{lab3_base}}/api/collection-points/{{lab3_pointId}}
+
+> {%
+    const b = response.body;
+    client.test("56. CRUD: удалить пункт и связанные партии [204]", function () {
+        client.assert(response.status === 204, "Ожидался HTTP 204, получен другой статус");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 57. Удалённый пункт должен вернуть 404 [404]
+GET {{lab3_base}}/api/collection-points/{{lab3_pointId}}
+
+> {%
+    const b = response.body;
+    client.test("57. Удалённый пункт должен вернуть 404 [404]", function () {
+        client.assert(response.status === 404, "Ожидался HTTP 404, получен другой статус");
+        client.assert(b.status === 404, "Неверный status в JSON ошибки");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 58. CRUD: удалить тестовый вид вторсырья [204]
+DELETE {{lab3_base}}/api/recycling-types/{{lab3_typeId}}
+
+> {%
+    const b = response.body;
+    client.test("58. CRUD: удалить тестовый вид вторсырья [204]", function () {
+        client.assert(response.status === 204, "Ожидался HTTP 204, получен другой статус");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 59. Удалённый вид должен вернуть 404 [404]
+GET {{lab3_base}}/api/recycling-types/{{lab3_typeId}}
+
+> {%
+    const b = response.body;
+    client.test("59. Удалённый вид должен вернуть 404 [404]", function () {
+        client.assert(response.status === 404, "Ожидался HTTP 404, получен другой статус");
+        client.assert(b.status === 404, "Неверный status в JSON ошибки");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 60. CRUD: удалить тестового пользователя [204]
+DELETE {{lab3_base}}/api/users/{{lab3_userId}}
+
+> {%
+    const b = response.body;
+    client.test("60. CRUD: удалить тестового пользователя [204]", function () {
+        client.assert(response.status === 204, "Ожидался HTTP 204, получен другой статус");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 61. Удалённый пользователь должен вернуть 404 [404]
+GET {{lab3_base}}/api/users/{{lab3_userId}}
+
+> {%
+    const b = response.body;
+    client.test("61. Удалённый пользователь должен вернуть 404 [404]", function () {
+        client.assert(response.status === 404, "Ожидался HTTP 404, получен другой статус");
+        client.assert(b.status === 404, "Неверный status в JSON ошибки");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 62. После очистки исходные ID сохранены: users [200]
+GET {{lab3_base}}/api/users
+
+> {%
+    const b = response.body;
+    client.test("62. После очистки исходные ID сохранены: users [200]", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен другой статус");
+        client.assert(Array.isArray(b), "Ожидался JSON-массив");
+        client.assert(JSON.stringify(b.map(item => Number(item.id)).sort((a, z) => a - z)) === client.global.get("lab3_baseline_users"), "Набор ID после очистки отличается от исходного: users");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 63. После очистки исходные ID сохранены: recycling-types [200]
+GET {{lab3_base}}/api/recycling-types
+
+> {%
+    const b = response.body;
+    client.test("63. После очистки исходные ID сохранены: recycling-types [200]", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен другой статус");
+        client.assert(Array.isArray(b), "Ожидался JSON-массив");
+        client.assert(JSON.stringify(b.map(item => Number(item.id)).sort((a, z) => a - z)) === client.global.get("lab3_baseline_recycling-types"), "Набор ID после очистки отличается от исходного: recycling-types");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 64. После очистки исходные ID сохранены: collection-points [200]
+GET {{lab3_base}}/api/collection-points
+
+> {%
+    const b = response.body;
+    client.test("64. После очистки исходные ID сохранены: collection-points [200]", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен другой статус");
+        client.assert(Array.isArray(b), "Ожидался JSON-массив");
+        client.assert(JSON.stringify(b.map(item => Number(item.id)).sort((a, z) => a - z)) === client.global.get("lab3_baseline_collection-points"), "Набор ID после очистки отличается от исходного: collection-points");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 65. После очистки исходные ID сохранены: recycling-batches [200]
+GET {{lab3_base}}/api/recycling-batches
+
+> {%
+    const b = response.body;
+    client.test("65. После очистки исходные ID сохранены: recycling-batches [200]", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен другой статус");
+        client.assert(Array.isArray(b), "Ожидался JSON-массив");
+        client.assert(JSON.stringify(b.map(item => Number(item.id)).sort((a, z) => a - z)) === client.global.get("lab3_baseline_recycling-batches"), "Набор ID после очистки отличается от исходного: recycling-batches");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+    });
+%}
+
+
+### 66. После очистки исходные ID сохранены: bonus-entries [200]
+GET {{lab3_base}}/api/bonus-entries
+
+> {%
+    const b = response.body;
+    client.test("66. После очистки исходные ID сохранены: bonus-entries [200]", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен другой статус");
+        client.assert(Array.isArray(b), "Ожидался JSON-массив");
+        client.assert(JSON.stringify(b.map(item => Number(item.id)).sort((a, z) => a - z)) === client.global.get("lab3_baseline_bonus-entries"), "Набор ID после очистки отличается от исходного: bonus-entries");
+        client.global.set("lab3_passed", String(Number(client.global.get("lab3_passed") || "0") + 1));
+        const passed = Number(client.global.get("lab3_passed"));
+        client.log("ЛР3: пройдено " + passed + " из 66 проверок.");
+        client.assert(passed === 66, "Не все проверки прошли. Найдите первый упавший тест в списке запросов.");
+    });
+%}

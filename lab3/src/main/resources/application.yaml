@@ -1,0 +1,18 @@
+spring:
+  application:
+    name: "56"
+
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: true
+      fail-on-trailing-tokens: true
+      accept-float-as-int: false
+
+server:
+  address: 127.0.0.1
+  port: 8080

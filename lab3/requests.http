@@ -1,0 +1,105 @@
+### Создать тестового пользователя
+POST http://127.0.0.1:8080/api/users
+Content-Type: application/json
+
+{
+  "name": "Тест БД",
+  "email": "db-check@example.com"
+}
+
+### Прочитать сохранённого пользователя
+GET http://127.0.0.1:8080/api/users/3
+
+### Изменить имя пользователя
+PATCH http://127.0.0.1:8080/api/users/3
+Content-Type: application/json
+
+{
+  "name": "Тест БД обновлён"
+}
+
+### Удалить тестового пользователя
+DELETE http://127.0.0.1:8080/api/users/3
+
+### Создать тестовый пункт приёма
+POST http://127.0.0.1:8080/api/collection-points
+Content-Type: application/json
+
+{
+  "address": "Тестовый пункт",
+  "recyclingTypeIds": [1, 2],
+  "available": true,
+  "dailyWeightLimit": 15.000
+}
+
+### Прочитать тестовый пункт приёма
+GET http://127.0.0.1:8080/api/collection-points/4
+
+### Принять 10 кг бумаги
+POST http://127.0.0.1:8080/api/recycling-batches
+Content-Type: application/json
+
+{
+  "userId": 1,
+  "pointId": 4,
+  "typeId": 1,
+  "weightKg": 10.000
+}
+
+### Проверить превышение дневного лимита
+POST http://127.0.0.1:8080/api/recycling-batches
+Content-Type: application/json
+
+{
+  "userId": 1,
+  "pointId": 4,
+  "typeId": 1,
+  "weightKg": 6.000
+}
+
+### Проверить партии после отказа
+GET http://127.0.0.1:8080/api/recycling-batches
+
+### Создать бонус для партии 4
+POST http://127.0.0.1:8080/api/bonus-entries
+Content-Type: application/json
+
+{
+  "batchId": 4
+}
+
+### Отменить партию 4
+PATCH http://127.0.0.1:8080/api/recycling-batches/4
+Content-Type: application/json
+
+{
+  "status": "CANCELLED"
+}
+
+### Проверить бонус после отмены партии
+GET http://127.0.0.1:8080/api/bonus-entries/4
+
+### Попытаться восстановить отменённую партию
+PATCH http://127.0.0.1:8080/api/recycling-batches/4
+Content-Type: application/json
+
+{
+  "status": "ACCEPTED"
+}
+
+### Принять 6 кг после отмены предыдущей партии
+POST http://127.0.0.1:8080/api/recycling-batches
+Content-Type: application/json
+
+{
+  "userId": 1,
+  "pointId": 4,
+  "typeId": 1,
+  "weightKg": 6.000
+}
+
+### Удалить тестовый пункт со связанными данными
+DELETE http://127.0.0.1:8080/api/collection-points/4
+
+### Проверить партии после отказа
+GET http://127.0.0.1:8080/api/recycling-batches
