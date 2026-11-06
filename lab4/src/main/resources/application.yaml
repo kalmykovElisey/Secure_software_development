@@ -1,0 +1,27 @@
+spring:
+  application:
+    name: recycling-lab4
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://127.0.0.1:5432/recycling_lab4}
+    username: ${DB_USERNAME:recycling_app}
+    password: ${DB_PASSWORD}
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: true
+      fail-on-trailing-tokens: true
+      accept-float-as-int: false
+
+server:
+  address: 127.0.0.1
+  port: ${SERVER_PORT:8080}
+  servlet:
+    session:
+      timeout: 20m
+      cookie:
+        http-only: true
+        same-site: strict
+
+app:
+  admin:
+    email: ${ADMIN_EMAIL:}
+    password: ${ADMIN_PASSWORD:}

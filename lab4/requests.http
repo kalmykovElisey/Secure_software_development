@@ -1,0 +1,1104 @@
+# ЛР4. Run All Requests in File; выбрать environment local.
+# Сначала заполнить http-client.private.env.json по файлу .example.
+# HTTP Client автоматически сохраняет JSESSIONID. Не отключать cookies.
+# Создаются только собственные тестовые данные; в конце они удаляются.
+# При прерывании полного запуска тестовые записи могут остаться.
+# HTTP Basic передаётся в каждом защищённом запросе; сессия хранит только CSRF.
+@baseUrl = http://127.0.0.1:8080
+@demoPassword = Lab4-Requests!42
+
+### 01. Получить CSRF-токен и cookie [200]
+< {%
+    const run = String($uuid).toLowerCase();
+    client.global.set("l4_email", "lab4-" + run + "@example.com");
+    client.global.set("l4_operatorEmail", "lab4-op-" + run + "@example.com");
+    ["userId","operatorId","typeId","pointId","batchAId","batchBId","batchCId","bonusAId","bonusBId","bonusCId"].forEach(k => client.global.set("l4_" + k, "0"));
+    client.global.set("l4_csrf", "");
+    client.global.set("l4_passed", "0");
+%}
+GET {{baseUrl}}/api/auth/csrf
+
+> {%
+    const b = response.body;
+    if (response.status === 200) { client.global.set("l4_csrf", String(b.token)); }
+    client.test("01. Получить CSRF-токен и cookie", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен " + response.status);
+        client.assert(b.headerName === "X-CSRF-TOKEN", "Заголовок CSRF");
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 02. Без Basic Auth вход закрыт [401]
+GET {{baseUrl}}/api/auth/me
+
+> {%
+    const b = response.body;
+    client.test("02. Без Basic Auth вход закрыт", function () {
+        client.assert(response.status === 401, "Ожидался HTTP 401, получен " + response.status);
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 03. Регистрация без CSRF закрыта [403]
+POST {{baseUrl}}/api/auth/register
+Content-Type: application/json
+
+{}
+
+> {%
+    const b = response.body;
+    client.test("03. Регистрация без CSRF закрыта", function () {
+        client.assert(response.status === 403, "Ожидался HTTP 403, получен " + response.status);
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 04. Неверный CSRF отклонён [403]
+POST {{baseUrl}}/api/auth/register
+X-CSRF-TOKEN: wrong-token
+Content-Type: application/json
+
+{}
+
+> {%
+    const b = response.body;
+    client.test("04. Неверный CSRF отклонён", function () {
+        client.assert(response.status === 403, "Ожидался HTTP 403, получен " + response.status);
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 05. Регистрация обычного пользователя [201]
+POST {{baseUrl}}/api/auth/register
+X-CSRF-TOKEN: {{l4_csrf}}
+Content-Type: application/json
+
+{
+  "name": "ЛР4 пользователь",
+  "email": "{{l4_email}}",
+  "password": "{{demoPassword}}"
+}
+
+> {%
+    const b = response.body;
+    if (response.status === 201) { client.global.set("l4_userId", String(b.userId)); }
+    client.test("05. Регистрация обычного пользователя", function () {
+        client.assert(response.status === 201, "Ожидался HTTP 201, получен " + response.status);
+        client.assert(b.role === "USER" && b.enabled, "Роль регистрации"); client.assert(!("password" in b) && !("passwordHash" in b), "Пароль не возвращается");
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 06. Повторный email запрещён [409]
+POST {{baseUrl}}/api/auth/register
+X-CSRF-TOKEN: {{l4_csrf}}
+Content-Type: application/json
+
+{
+  "name": "ЛР4 пользователь",
+  "email": " {{l4_email}} ",
+  "password": "{{demoPassword}}"
+}
+
+> {%
+    const b = response.body;
+    client.test("06. Повторный email запрещён", function () {
+        client.assert(response.status === 409, "Ожидался HTTP 409, получен " + response.status);
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 07. Слабый пароль отклонён [400]
+POST {{baseUrl}}/api/auth/register
+X-CSRF-TOKEN: {{l4_csrf}}
+Content-Type: application/json
+
+{
+  "name": "ЛР4 пользователь",
+  "email": "weak-{{l4_email}}",
+  "password": "123"
+}
+
+> {%
+    const b = response.body;
+    client.test("07. Слабый пароль отклонён", function () {
+        client.assert(response.status === 400, "Ожидался HTTP 400, получен " + response.status);
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 08. Нельзя зарегистрировать себя администратором [400]
+POST {{baseUrl}}/api/auth/register
+X-CSRF-TOKEN: {{l4_csrf}}
+Content-Type: application/json
+
+{
+  "name": "ЛР4 пользователь",
+  "email": "role-{{l4_email}}",
+  "password": "{{demoPassword}}",
+  "role": "ADMIN"
+}
+
+> {%
+    const b = response.body;
+    client.test("08. Нельзя зарегистрировать себя администратором", function () {
+        client.assert(response.status === 400, "Ожидался HTTP 400, получен " + response.status);
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 09. Нельзя задать состояние при регистрации [400]
+POST {{baseUrl}}/api/auth/register
+X-CSRF-TOKEN: {{l4_csrf}}
+Content-Type: application/json
+
+{
+  "name": "ЛР4 пользователь",
+  "email": "state-{{l4_email}}",
+  "password": "{{demoPassword}}",
+  "enabled": true
+}
+
+> {%
+    const b = response.body;
+    client.test("09. Нельзя задать состояние при регистрации", function () {
+        client.assert(response.status === 400, "Ожидался HTTP 400, получен " + response.status);
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 10. Вход с неверным паролем [401]
+GET {{baseUrl}}/api/auth/me
+Authorization: Basic {{l4_email}} Wrong-Password!42
+
+> {%
+    const b = response.body;
+    client.test("10. Вход с неверным паролем", function () {
+        client.assert(response.status === 401, "Ожидался HTTP 401, получен " + response.status);
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 11. Вход обычного пользователя [200]
+GET {{baseUrl}}/api/auth/me
+Authorization: Basic {{l4_email}} {{demoPassword}}
+
+> {%
+    const b = response.body;
+    client.test("11. Вход обычного пользователя", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен " + response.status);
+        client.assert(b.userId === Number(client.global.get("l4_userId")) && b.role === "USER", "Собственная учётная запись");
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 12. Cookie не заменяет Basic Auth [401]
+GET {{baseUrl}}/api/auth/me
+
+> {%
+    const b = response.body;
+    client.test("12. Cookie не заменяет Basic Auth", function () {
+        client.assert(response.status === 401, "Ожидался HTTP 401, получен " + response.status);
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 13. Создать будущего оператора как USER [201]
+POST {{baseUrl}}/api/auth/register
+X-CSRF-TOKEN: {{l4_csrf}}
+Content-Type: application/json
+
+{
+  "name": "ЛР4 оператор",
+  "email": "{{l4_operatorEmail}}",
+  "password": "{{demoPassword}}"
+}
+
+> {%
+    const b = response.body;
+    if (response.status === 201) { client.global.set("l4_operatorId", String(b.userId)); }
+    client.test("13. Создать будущего оператора как USER", function () {
+        client.assert(response.status === 201, "Ожидался HTTP 201, получен " + response.status);
+        client.assert(b.role === "USER", "Повышение не выдаётся при регистрации");
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 14. Токен для администратора [200]
+GET {{baseUrl}}/api/auth/csrf
+Authorization: Basic {{adminEmail}} {{adminPassword}}
+
+> {%
+    const b = response.body;
+    if (response.status === 200) { client.global.set("l4_csrf", String(b.token)); }
+    client.test("14. Токен для администратора", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен " + response.status);
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 15. Администратор назначает OPERATOR [200]
+PATCH {{baseUrl}}/api/auth/accounts/{{l4_operatorId}}
+Authorization: Basic {{adminEmail}} {{adminPassword}}
+X-CSRF-TOKEN: {{l4_csrf}}
+Content-Type: application/json
+
+{
+  "role": "OPERATOR"
+}
+
+> {%
+    const b = response.body;
+    client.test("15. Администратор назначает OPERATOR", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен " + response.status);
+        client.assert(b.role === "OPERATOR", "Роль изменена");
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 16. Новая роль действует при следующем входе [200]
+GET {{baseUrl}}/api/auth/me
+Authorization: Basic {{l4_operatorEmail}} {{demoPassword}}
+
+> {%
+    const b = response.body;
+    client.test("16. Новая роль действует при следующем входе", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен " + response.status);
+        client.assert(b.role === "OPERATOR", "Роль перечитана из БД");
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 17. Оператор видит пользователей [200]
+GET {{baseUrl}}/api/users
+Authorization: Basic {{l4_operatorEmail}} {{demoPassword}}
+
+> {%
+    const b = response.body;
+    client.test("17. Оператор видит пользователей", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен " + response.status);
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 18. USER не видит общий список пользователей [403]
+GET {{baseUrl}}/api/users
+Authorization: Basic {{l4_email}} {{demoPassword}}
+
+> {%
+    const b = response.body;
+    client.test("18. USER не видит общий список пользователей", function () {
+        client.assert(response.status === 403, "Ожидался HTTP 403, получен " + response.status);
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 19. USER не видит чужой профиль [403]
+GET {{baseUrl}}/api/users/{{l4_operatorId}}
+Authorization: Basic {{l4_email}} {{demoPassword}}
+
+> {%
+    const b = response.body;
+    client.test("19. USER не видит чужой профиль", function () {
+        client.assert(response.status === 403, "Ожидался HTTP 403, получен " + response.status);
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 20. USER не меняет чужой профиль [403]
+PATCH {{baseUrl}}/api/users/{{l4_operatorId}}
+Authorization: Basic {{l4_email}} {{demoPassword}}
+X-CSRF-TOKEN: {{l4_csrf}}
+Content-Type: application/json
+
+{
+  "name": "Чужой"
+}
+
+> {%
+    const b = response.body;
+    client.test("20. USER не меняет чужой профиль", function () {
+        client.assert(response.status === 403, "Ожидался HTTP 403, получен " + response.status);
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 21. USER меняет собственное имя [200]
+PATCH {{baseUrl}}/api/users/{{l4_userId}}
+Authorization: Basic {{l4_email}} {{demoPassword}}
+X-CSRF-TOKEN: {{l4_csrf}}
+Content-Type: application/json
+
+{
+  "name": "ЛР4 обновлён"
+}
+
+> {%
+    const b = response.body;
+    client.test("21. USER меняет собственное имя", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен " + response.status);
+        client.assert(b.name === "ЛР4 обновлён", "Имя изменено");
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 22. Оператор не управляет справочником [403]
+POST {{baseUrl}}/api/recycling-types
+Authorization: Basic {{l4_operatorEmail}} {{demoPassword}}
+X-CSRF-TOKEN: {{l4_csrf}}
+Content-Type: application/json
+
+{
+  "name": "Запрещено",
+  "unit": "кг",
+  "pointsPerKg": 3
+}
+
+> {%
+    const b = response.body;
+    client.test("22. Оператор не управляет справочником", function () {
+        client.assert(response.status === 403, "Ожидался HTTP 403, получен " + response.status);
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 23. ADMIN создаёт вид вторсырья [201]
+POST {{baseUrl}}/api/recycling-types
+Authorization: Basic {{adminEmail}} {{adminPassword}}
+X-CSRF-TOKEN: {{l4_csrf}}
+Content-Type: application/json
+
+{
+  "name": "ЛР4 бумага",
+  "unit": "кг",
+  "pointsPerKg": 3
+}
+
+> {%
+    const b = response.body;
+    if (response.status === 201) { client.global.set("l4_typeId", String(b.id)); }
+    client.test("23. ADMIN создаёт вид вторсырья", function () {
+        client.assert(response.status === 201, "Ожидался HTTP 201, получен " + response.status);
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 24. ADMIN создаёт пункт с лимитом 15 кг [201]
+POST {{baseUrl}}/api/collection-points
+Authorization: Basic {{adminEmail}} {{adminPassword}}
+X-CSRF-TOKEN: {{l4_csrf}}
+Content-Type: application/json
+
+{
+  "address": "ЛР4 тестовый пункт",
+  "recyclingTypeIds": [
+    {{l4_typeId}}
+  ],
+  "available": true,
+  "dailyWeightLimit": 15
+}
+
+> {%
+    const b = response.body;
+    if (response.status === 201) { client.global.set("l4_pointId", String(b.id)); }
+    client.test("24. ADMIN создаёт пункт с лимитом 15 кг", function () {
+        client.assert(response.status === 201, "Ожидался HTTP 201, получен " + response.status);
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 25. USER ищет подходящий пункт [200]
+GET {{baseUrl}}/api/operations/available-points?typeId={{l4_typeId}}&weightKg=10
+Authorization: Basic {{l4_email}} {{demoPassword}}
+
+> {%
+    const b = response.body;
+    client.test("25. USER ищет подходящий пункт", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен " + response.status);
+        client.assert(b.some(p => p.id === Number(client.global.get("l4_pointId")) && p.freeWeightKg === 15 && p.estimatedPoints === 30), "Лимит и оценка бонуса");
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 26. USER не принимает сырьё самостоятельно [403]
+POST {{baseUrl}}/api/operations/accept
+Authorization: Basic {{l4_email}} {{demoPassword}}
+X-CSRF-TOKEN: {{l4_csrf}}
+Content-Type: application/json
+
+{
+  "userId": {{l4_userId}},
+  "pointId": {{l4_pointId}},
+  "typeId": {{l4_typeId}},
+  "weightKg": 10
+}
+
+> {%
+    const b = response.body;
+    client.test("26. USER не принимает сырьё самостоятельно", function () {
+        client.assert(response.status === 403, "Ожидался HTTP 403, получен " + response.status);
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 27. OPERATOR принимает 10 кг и создаёт бонус [201]
+POST {{baseUrl}}/api/operations/accept
+Authorization: Basic {{l4_operatorEmail}} {{demoPassword}}
+X-CSRF-TOKEN: {{l4_csrf}}
+Content-Type: application/json
+
+{
+  "userId": {{l4_userId}},
+  "pointId": {{l4_pointId}},
+  "typeId": {{l4_typeId}},
+  "weightKg": 10
+}
+
+> {%
+    const b = response.body;
+    if (response.status === 201) { client.global.set("l4_batchAId", String(b.batch.id)); client.global.set("l4_bonusAId", String(b.bonus.id)); client.global.set("l4_today", String(new Date(Date.parse(b.batch.receivedAt) + 3 * 60 * 60 * 1000).toISOString().slice(0,10))); }
+    client.test("27. OPERATOR принимает 10 кг и создаёт бонус", function () {
+        client.assert(response.status === 201, "Ожидался HTTP 201, получен " + response.status);
+        client.assert(b.bonus.points === 30 && b.bonus.status === "PENDING", "10 × 3 = 30");
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 28. USER читает собственную партию [200]
+GET {{baseUrl}}/api/recycling-batches/{{l4_batchAId}}
+Authorization: Basic {{l4_email}} {{demoPassword}}
+
+> {%
+    const b = response.body;
+    client.test("28. USER читает собственную партию", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен " + response.status);
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 29. USER читает собственный бонус [200]
+GET {{baseUrl}}/api/bonus-entries/{{l4_bonusAId}}
+Authorization: Basic {{l4_email}} {{demoPassword}}
+
+> {%
+    const b = response.body;
+    client.test("29. USER читает собственный бонус", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен " + response.status);
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 30. OPERATOR принимает 2 кг для другого пользователя [201]
+POST {{baseUrl}}/api/operations/accept
+Authorization: Basic {{l4_operatorEmail}} {{demoPassword}}
+X-CSRF-TOKEN: {{l4_csrf}}
+Content-Type: application/json
+
+{
+  "userId": {{l4_operatorId}},
+  "pointId": {{l4_pointId}},
+  "typeId": {{l4_typeId}},
+  "weightKg": 2
+}
+
+> {%
+    const b = response.body;
+    if (response.status === 201) { client.global.set("l4_batchBId", String(b.batch.id)); client.global.set("l4_bonusBId", String(b.bonus.id)); }
+    client.test("30. OPERATOR принимает 2 кг для другого пользователя", function () {
+        client.assert(response.status === 201, "Ожидался HTTP 201, получен " + response.status);
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 31. USER не читает чужую партию по ID [403]
+GET {{baseUrl}}/api/recycling-batches/{{l4_batchBId}}
+Authorization: Basic {{l4_email}} {{demoPassword}}
+
+> {%
+    const b = response.body;
+    client.test("31. USER не читает чужую партию по ID", function () {
+        client.assert(response.status === 403, "Ожидался HTTP 403, получен " + response.status);
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 32. USER не читает чужой бонус по ID [403]
+GET {{baseUrl}}/api/bonus-entries/{{l4_bonusBId}}
+Authorization: Basic {{l4_email}} {{demoPassword}}
+
+> {%
+    const b = response.body;
+    client.test("32. USER не читает чужой бонус по ID", function () {
+        client.assert(response.status === 403, "Ожидался HTTP 403, получен " + response.status);
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 33. Список партий ограничен владельцем [200]
+GET {{baseUrl}}/api/recycling-batches
+Authorization: Basic {{l4_email}} {{demoPassword}}
+
+> {%
+    const b = response.body;
+    client.test("33. Список партий ограничен владельцем", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен " + response.status);
+        client.assert(b.length === 1 && b.every(p => p.userId === Number(client.global.get("l4_userId"))), "Нет чужих партий");
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 34. Список бонусов ограничен владельцем [200]
+GET {{baseUrl}}/api/bonus-entries
+Authorization: Basic {{l4_email}} {{demoPassword}}
+
+> {%
+    const b = response.body;
+    client.test("34. Список бонусов ограничен владельцем", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен " + response.status);
+        client.assert(b.length === 1 && b[0].id === Number(client.global.get("l4_bonusAId")), "Нет чужих бонусов");
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 35. OPERATOR корректирует массу до 12 кг [200]
+POST {{baseUrl}}/api/operations/batches/{{l4_batchAId}}/correct-weight
+Authorization: Basic {{l4_operatorEmail}} {{demoPassword}}
+X-CSRF-TOKEN: {{l4_csrf}}
+Content-Type: application/json
+
+{
+  "weightKg": 12
+}
+
+> {%
+    const b = response.body;
+    client.test("35. OPERATOR корректирует массу до 12 кг", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен " + response.status);
+        client.assert(b.batch.weightKg === 12 && b.bonus.points === 36, "Масса и бонус изменены вместе");
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 36. Лимит нельзя обойти через коррекцию [409]
+POST {{baseUrl}}/api/operations/batches/{{l4_batchAId}}/correct-weight
+Authorization: Basic {{l4_operatorEmail}} {{demoPassword}}
+X-CSRF-TOKEN: {{l4_csrf}}
+Content-Type: application/json
+
+{
+  "weightKg": 14
+}
+
+> {%
+    const b = response.body;
+    client.test("36. Лимит нельзя обойти через коррекцию", function () {
+        client.assert(response.status === 409, "Ожидался HTTP 409, получен " + response.status);
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 37. Лимит нельзя обойти через приём [409]
+POST {{baseUrl}}/api/operations/accept
+Authorization: Basic {{l4_operatorEmail}} {{demoPassword}}
+X-CSRF-TOKEN: {{l4_csrf}}
+Content-Type: application/json
+
+{
+  "userId": {{l4_userId}},
+  "pointId": {{l4_pointId}},
+  "typeId": {{l4_typeId}},
+  "weightKg": 2
+}
+
+> {%
+    const b = response.body;
+    client.test("37. Лимит нельзя обойти через приём", function () {
+        client.assert(response.status === 409, "Ожидался HTTP 409, получен " + response.status);
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 38. После отказа масса осталась прежней [200]
+GET {{baseUrl}}/api/recycling-batches/{{l4_batchAId}}
+Authorization: Basic {{l4_email}} {{demoPassword}}
+
+> {%
+    const b = response.body;
+    client.test("38. После отказа масса осталась прежней", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен " + response.status);
+        client.assert(b.weightKg === 12, "Неуспешная операция не записала массу");
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 39. После отказа бонус остался прежним [200]
+GET {{baseUrl}}/api/bonus-entries/{{l4_bonusAId}}
+Authorization: Basic {{l4_email}} {{demoPassword}}
+
+> {%
+    const b = response.body;
+    client.test("39. После отказа бонус остался прежним", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен " + response.status);
+        client.assert(b.points === 36 && b.status === "PENDING", "Бонус не изменился");
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 40. USER получает собственную сводку [200]
+GET {{baseUrl}}/api/operations/users/{{l4_userId}}/summary?from={{l4_today}}&to={{l4_today}}
+Authorization: Basic {{l4_email}} {{demoPassword}}
+
+> {%
+    const b = response.body;
+    client.test("40. USER получает собственную сводку", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен " + response.status);
+        client.assert(b.acceptedWeightKg === 12 && b.pendingPoints === 36, "Сводка владельца");
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 41. USER не получает чужую сводку [403]
+GET {{baseUrl}}/api/operations/users/{{l4_operatorId}}/summary?from={{l4_today}}&to={{l4_today}}
+Authorization: Basic {{l4_email}} {{demoPassword}}
+
+> {%
+    const b = response.body;
+    client.test("41. USER не получает чужую сводку", function () {
+        client.assert(response.status === 403, "Ожидался HTTP 403, получен " + response.status);
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 42. OPERATOR не начисляет бонусы [403]
+POST {{baseUrl}}/api/operations/users/{{l4_userId}}/accrue-bonuses
+Authorization: Basic {{l4_operatorEmail}} {{demoPassword}}
+X-CSRF-TOKEN: {{l4_csrf}}
+Content-Type: application/json
+
+{
+  "from": "{{l4_today}}",
+  "to": "{{l4_today}}"
+}
+
+> {%
+    const b = response.body;
+    client.test("42. OPERATOR не начисляет бонусы", function () {
+        client.assert(response.status === 403, "Ожидался HTTP 403, получен " + response.status);
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 43. OPERATOR не обходит запрет через CRUD бонусов [403]
+PATCH {{baseUrl}}/api/bonus-entries/{{l4_bonusAId}}
+Authorization: Basic {{l4_operatorEmail}} {{demoPassword}}
+X-CSRF-TOKEN: {{l4_csrf}}
+Content-Type: application/json
+
+{
+  "status": "ACCRUED"
+}
+
+> {%
+    const b = response.body;
+    client.test("43. OPERATOR не обходит запрет через CRUD бонусов", function () {
+        client.assert(response.status === 403, "Ожидался HTTP 403, получен " + response.status);
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 44. USER не повышает себе роль [403]
+PATCH {{baseUrl}}/api/auth/accounts/{{l4_userId}}
+Authorization: Basic {{l4_email}} {{demoPassword}}
+X-CSRF-TOKEN: {{l4_csrf}}
+Content-Type: application/json
+
+{
+  "role": "ADMIN"
+}
+
+> {%
+    const b = response.body;
+    client.test("44. USER не повышает себе роль", function () {
+        client.assert(response.status === 403, "Ожидался HTTP 403, получен " + response.status);
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 45. ADMIN начисляет 36 баллов [200]
+POST {{baseUrl}}/api/operations/users/{{l4_userId}}/accrue-bonuses
+Authorization: Basic {{adminEmail}} {{adminPassword}}
+X-CSRF-TOKEN: {{l4_csrf}}
+Content-Type: application/json
+
+{
+  "from": "{{l4_today}}",
+  "to": "{{l4_today}}"
+}
+
+> {%
+    const b = response.body;
+    client.test("45. ADMIN начисляет 36 баллов", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен " + response.status);
+        client.assert(b.count === 1 && b.totalPoints === 36, "Начислен только выбранный пользователь");
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 46. Повторное начисление отклонено [409]
+POST {{baseUrl}}/api/operations/users/{{l4_userId}}/accrue-bonuses
+Authorization: Basic {{adminEmail}} {{adminPassword}}
+X-CSRF-TOKEN: {{l4_csrf}}
+Content-Type: application/json
+
+{
+  "from": "{{l4_today}}",
+  "to": "{{l4_today}}"
+}
+
+> {%
+    const b = response.body;
+    client.test("46. Повторное начисление отклонено", function () {
+        client.assert(response.status === 409, "Ожидался HTTP 409, получен " + response.status);
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 47. После начисления вес менять нельзя [409]
+POST {{baseUrl}}/api/operations/batches/{{l4_batchAId}}/correct-weight
+Authorization: Basic {{l4_operatorEmail}} {{demoPassword}}
+X-CSRF-TOKEN: {{l4_csrf}}
+Content-Type: application/json
+
+{
+  "weightKg": 11
+}
+
+> {%
+    const b = response.body;
+    client.test("47. После начисления вес менять нельзя", function () {
+        client.assert(response.status === 409, "Ожидался HTTP 409, получен " + response.status);
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 48. OPERATOR отменяет партию [200]
+PATCH {{baseUrl}}/api/recycling-batches/{{l4_batchAId}}
+Authorization: Basic {{l4_operatorEmail}} {{demoPassword}}
+X-CSRF-TOKEN: {{l4_csrf}}
+Content-Type: application/json
+
+{
+  "status": "CANCELLED"
+}
+
+> {%
+    const b = response.body;
+    client.test("48. OPERATOR отменяет партию", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен " + response.status);
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 49. Отмена партии отменила её бонус [200]
+GET {{baseUrl}}/api/bonus-entries/{{l4_bonusAId}}
+Authorization: Basic {{l4_email}} {{demoPassword}}
+
+> {%
+    const b = response.body;
+    client.test("49. Отмена партии отменила её бонус", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен " + response.status);
+        client.assert(b.status === "CANCELLED", "Бонус отменён");
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 50. Отменённую партию восстановить нельзя [409]
+PATCH {{baseUrl}}/api/recycling-batches/{{l4_batchAId}}
+Authorization: Basic {{l4_operatorEmail}} {{demoPassword}}
+X-CSRF-TOKEN: {{l4_csrf}}
+Content-Type: application/json
+
+{
+  "status": "ACCEPTED"
+}
+
+> {%
+    const b = response.body;
+    client.test("50. Отменённую партию восстановить нельзя", function () {
+        client.assert(response.status === 409, "Ожидался HTTP 409, получен " + response.status);
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 51. После отмены лимит снова доступен [201]
+POST {{baseUrl}}/api/operations/accept
+Authorization: Basic {{l4_operatorEmail}} {{demoPassword}}
+X-CSRF-TOKEN: {{l4_csrf}}
+Content-Type: application/json
+
+{
+  "userId": {{l4_userId}},
+  "pointId": {{l4_pointId}},
+  "typeId": {{l4_typeId}},
+  "weightKg": 6
+}
+
+> {%
+    const b = response.body;
+    if (response.status === 201) { client.global.set("l4_batchCId", String(b.batch.id)); client.global.set("l4_bonusCId", String(b.bonus.id)); }
+    client.test("51. После отмены лимит снова доступен", function () {
+        client.assert(response.status === 201, "Ожидался HTTP 201, получен " + response.status);
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 52. ADMIN блокирует пользователя [200]
+PATCH {{baseUrl}}/api/auth/accounts/{{l4_userId}}
+Authorization: Basic {{adminEmail}} {{adminPassword}}
+X-CSRF-TOKEN: {{l4_csrf}}
+Content-Type: application/json
+
+{
+  "enabled": false
+}
+
+> {%
+    const b = response.body;
+    client.test("52. ADMIN блокирует пользователя", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен " + response.status);
+        client.assert(!b.enabled, "Учётная запись заблокирована");
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 53. Заблокированный пользователь не входит даже с cookie [401]
+GET {{baseUrl}}/api/auth/me
+Authorization: Basic {{l4_email}} {{demoPassword}}
+
+> {%
+    const b = response.body;
+    client.test("53. Заблокированный пользователь не входит даже с cookie", function () {
+        client.assert(response.status === 401, "Ожидался HTTP 401, получен " + response.status);
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 54. ADMIN снимает блокировку [200]
+PATCH {{baseUrl}}/api/auth/accounts/{{l4_userId}}
+Authorization: Basic {{adminEmail}} {{adminPassword}}
+X-CSRF-TOKEN: {{l4_csrf}}
+Content-Type: application/json
+
+{
+  "enabled": true
+}
+
+> {%
+    const b = response.body;
+    client.test("54. ADMIN снимает блокировку", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен " + response.status);
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 55. Разблокированный пользователь снова входит [200]
+GET {{baseUrl}}/api/auth/me
+Authorization: Basic {{l4_email}} {{demoPassword}}
+
+> {%
+    const b = response.body;
+    client.test("55. Разблокированный пользователь снова входит", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен " + response.status);
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 56. ADMIN убирает роль оператора [200]
+PATCH {{baseUrl}}/api/auth/accounts/{{l4_operatorId}}
+Authorization: Basic {{adminEmail}} {{adminPassword}}
+X-CSRF-TOKEN: {{l4_csrf}}
+Content-Type: application/json
+
+{
+  "role": "USER"
+}
+
+> {%
+    const b = response.body;
+    client.test("56. ADMIN убирает роль оператора", function () {
+        client.assert(response.status === 200, "Ожидался HTTP 200, получен " + response.status);
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 57. Старая cookie не сохраняет отозванную роль [403]
+POST {{baseUrl}}/api/operations/batches/{{l4_batchCId}}/correct-weight
+Authorization: Basic {{l4_operatorEmail}} {{demoPassword}}
+X-CSRF-TOKEN: {{l4_csrf}}
+Content-Type: application/json
+
+{
+  "weightKg": 5
+}
+
+> {%
+    const b = response.body;
+    client.test("57. Старая cookie не сохраняет отозванную роль", function () {
+        client.assert(response.status === 403, "Ожидался HTTP 403, получен " + response.status);
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 58. Удалить тестовый пункт со связанными данными [204]
+DELETE {{baseUrl}}/api/collection-points/{{l4_pointId}}
+Authorization: Basic {{adminEmail}} {{adminPassword}}
+X-CSRF-TOKEN: {{l4_csrf}}
+
+> {%
+    const b = response.body;
+    client.test("58. Удалить тестовый пункт со связанными данными", function () {
+        client.assert(response.status === 204, "Ожидался HTTP 204, получен " + response.status);
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 59. Связанная партия удалена каскадно [404]
+GET {{baseUrl}}/api/recycling-batches/{{l4_batchCId}}
+Authorization: Basic {{adminEmail}} {{adminPassword}}
+
+> {%
+    const b = response.body;
+    client.test("59. Связанная партия удалена каскадно", function () {
+        client.assert(response.status === 404, "Ожидался HTTP 404, получен " + response.status);
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 60. Связанный бонус удалён каскадно [404]
+GET {{baseUrl}}/api/bonus-entries/{{l4_bonusCId}}
+Authorization: Basic {{adminEmail}} {{adminPassword}}
+
+> {%
+    const b = response.body;
+    client.test("60. Связанный бонус удалён каскадно", function () {
+        client.assert(response.status === 404, "Ожидался HTTP 404, получен " + response.status);
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 61. Удалить тестовый вид [204]
+DELETE {{baseUrl}}/api/recycling-types/{{l4_typeId}}
+Authorization: Basic {{adminEmail}} {{adminPassword}}
+X-CSRF-TOKEN: {{l4_csrf}}
+
+> {%
+    const b = response.body;
+    client.test("61. Удалить тестовый вид", function () {
+        client.assert(response.status === 204, "Ожидался HTTP 204, получен " + response.status);
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 62. Удалить профиль пользователя и его учётную запись [204]
+DELETE {{baseUrl}}/api/users/{{l4_userId}}
+Authorization: Basic {{adminEmail}} {{adminPassword}}
+X-CSRF-TOKEN: {{l4_csrf}}
+
+> {%
+    const b = response.body;
+    client.test("62. Удалить профиль пользователя и его учётную запись", function () {
+        client.assert(response.status === 204, "Ожидался HTTP 204, получен " + response.status);
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 63. Удалённая учётная запись больше не входит [401]
+GET {{baseUrl}}/api/auth/me
+Authorization: Basic {{l4_email}} {{demoPassword}}
+
+> {%
+    const b = response.body;
+    client.test("63. Удалённая учётная запись больше не входит", function () {
+        client.assert(response.status === 401, "Ожидался HTTP 401, получен " + response.status);
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+    });
+%}
+
+
+### 64. Удалить профиль бывшего оператора [204]
+DELETE {{baseUrl}}/api/users/{{l4_operatorId}}
+Authorization: Basic {{adminEmail}} {{adminPassword}}
+X-CSRF-TOKEN: {{l4_csrf}}
+
+> {%
+    const b = response.body;
+    client.test("64. Удалить профиль бывшего оператора", function () {
+        client.assert(response.status === 204, "Ожидался HTTP 204, получен " + response.status);
+        client.global.set("l4_passed", String(Number(client.global.get("l4_passed")) + 1));
+        client.assert(Number(client.global.get("l4_passed")) === 64, "Не все проверки выполнены");
+        client.log("ЛР4: пройдено 64 из 64 проверок.");
+    });
+%}
+
