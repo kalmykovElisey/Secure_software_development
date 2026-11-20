@@ -1,0 +1,257 @@
+# ЛР5. Выберите local и запустите Run All Requests in File.
+# SQL для проверки ACTIVE / USED / REVOKED находится в ЗАПУСК.txt.
+@baseUrl = http://127.0.0.1:8080
+@testPassword = Lab5-Requests!42
+
+### 01. Вход администратора [200]
+< {%
+    client.global.set("runId", String($uuid).toLowerCase());
+%}
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{"username":"{{adminEmail}}","password":"{{adminPassword}}","deviceId":"lab5-{{runId}}"}
+
+> {%
+    client.test("Вход администратора", function () {
+        client.assert(response.status === 200, "Ожидался 200, получен " + response.status);
+        client.assert(typeof response.body.accessToken === "string" && typeof response.body.refreshToken === "string", "Нужны оба токена");
+        client.global.set("lab5InitialAccess", response.body.accessToken);
+        client.global.set("lab5InitialRefresh", response.body.refreshToken);
+    });
+%}
+
+### 02. Защищённый API принимает access [200]
+GET {{baseUrl}}/api/auth/me
+Authorization: Bearer {{lab5InitialAccess}}
+
+> {%
+    client.test("Защищённый API принимает access", function () {
+        client.assert(response.status === 200, "Ожидался 200, получен " + response.status);
+        client.assert(response.body.role === "ADMIN", "Ожидалась роль ADMIN");
+    });
+%}
+
+### 03. Защищённый API требует токен [401]
+GET {{baseUrl}}/api/auth/me
+
+> {%
+    client.test("Защищённый API требует токен", function () {
+        client.assert(response.status === 401, "Ожидался 401, получен " + response.status);
+        client.assert(!response.body.accessToken && !response.body.refreshToken, "Токены в ошибочном ответе");
+    });
+%}
+
+### 04. Refresh нельзя использовать как Bearer [401]
+GET {{baseUrl}}/api/auth/me
+Authorization: Bearer {{lab5InitialRefresh}}
+
+> {%
+    client.test("Refresh нельзя использовать как Bearer", function () {
+        client.assert(response.status === 401, "Ожидался 401, получен " + response.status);
+        client.assert(!response.body.accessToken && !response.body.refreshToken, "Токены в ошибочном ответе");
+    });
+%}
+
+### 05. Access нельзя использовать для обновления [401]
+POST {{baseUrl}}/auth/refresh
+Content-Type: application/json
+
+{"refreshToken":"{{lab5InitialAccess}}"}
+
+> {%
+    client.test("Access нельзя использовать для обновления", function () {
+        client.assert(response.status === 401, "Ожидался 401, получен " + response.status);
+        client.assert(!response.body.accessToken && !response.body.refreshToken, "Токены в ошибочном ответе");
+    });
+%}
+
+### 06. Обмен refresh на новую пару [200]
+POST {{baseUrl}}/auth/refresh
+Content-Type: application/json
+
+{"refreshToken":"{{lab5InitialRefresh}}"}
+
+> {%
+    client.test("Обмен refresh на новую пару", function () {
+        client.assert(response.status === 200, "Ожидался 200, получен " + response.status);
+        client.assert(typeof response.body.accessToken === "string" && typeof response.body.refreshToken === "string", "Нужны оба токена");
+        client.global.set("lab5CurrentAccess", response.body.accessToken);
+        client.global.set("lab5CurrentRefresh", response.body.refreshToken);
+        client.assert(response.body.accessToken !== client.global.get("lab5InitialAccess"), "Access должен поменяться");
+        client.assert(response.body.refreshToken !== client.global.get("lab5InitialRefresh"), "Refresh должен поменяться");
+    });
+%}
+
+### 07. Повтор старого refresh отклонён [401]
+POST {{baseUrl}}/auth/refresh
+Content-Type: application/json
+
+{"refreshToken":"{{lab5InitialRefresh}}"}
+
+> {%
+    client.test("Повтор старого refresh отклонён", function () {
+        client.assert(response.status === 401, "Ожидался 401, получен " + response.status);
+        client.assert(!response.body.accessToken && !response.body.refreshToken, "Токены в ошибочном ответе");
+    });
+%}
+
+### 08. Отозванный refresh по-прежнему отклонён [401]
+POST {{baseUrl}}/auth/refresh
+Content-Type: application/json
+
+{"refreshToken":"{{lab5InitialRefresh}}"}
+
+> {%
+    client.test("Отозванный refresh по-прежнему отклонён", function () {
+        client.assert(response.status === 401, "Ожидался 401, получен " + response.status);
+        client.assert(!response.body.accessToken && !response.body.refreshToken, "Токены в ошибочном ответе");
+    });
+%}
+
+### 09. Новый access работает после повтора старого refresh [200]
+GET {{baseUrl}}/api/auth/me
+Authorization: Bearer {{lab5CurrentAccess}}
+
+> {%
+    client.test("Новый access работает после повтора старого refresh", function () {
+        client.assert(response.status === 200, "Ожидался 200, получен " + response.status);
+    });
+%}
+
+### 10. Неверный пароль [401]
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{"username":"{{adminEmail}}","password":"Incorrect-Lab5!42"}
+
+> {%
+    client.test("Неверный пароль", function () {
+        client.assert(response.status === 401, "Ожидался 401, получен " + response.status);
+        client.assert(!response.body.accessToken && !response.body.refreshToken, "Токены в ошибочном ответе");
+    });
+%}
+
+### 11. Обязательное поле отсутствует [400]
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{"username":"{{adminEmail}}"}
+
+> {%
+    client.test("Обязательное поле отсутствует", function () {
+        client.assert(response.status === 400, "Ожидался 400, получен " + response.status);
+        client.assert(!response.body.accessToken && !response.body.refreshToken, "Токены в ошибочном ответе");
+    });
+%}
+
+### 12. Пустой refresh [400]
+POST {{baseUrl}}/auth/refresh
+Content-Type: application/json
+
+{"refreshToken":""}
+
+> {%
+    client.test("Пустой refresh", function () {
+        client.assert(response.status === 400, "Ожидался 400, получен " + response.status);
+        client.assert(!response.body.accessToken && !response.body.refreshToken, "Токены в ошибочном ответе");
+    });
+%}
+
+### 13. Некорректный refresh [401]
+POST {{baseUrl}}/auth/refresh
+Content-Type: application/json
+
+{"refreshToken":"invalid-jwt"}
+
+> {%
+    client.test("Некорректный refresh", function () {
+        client.assert(response.status === 401, "Ожидался 401, получен " + response.status);
+        client.assert(!response.body.accessToken && !response.body.refreshToken, "Токены в ошибочном ответе");
+    });
+%}
+
+### 14. Регистрация выдаёт пару [201]
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{"name":"ЛР5 (тест)","email":"lab5-{{runId}}@example.com","password":"{{testPassword}}","deviceId":"registration-{{runId}}"}
+
+> {%
+    client.test("Регистрация выдаёт пару", function () {
+        client.assert(response.status === 201, "Ожидался 201, получен " + response.status);
+        client.assert(typeof response.body.accessToken === "string" && typeof response.body.refreshToken === "string", "Нужны оба токена");
+        client.global.set("lab5UserAccess", response.body.accessToken);
+        client.global.set("lab5UserRefresh", response.body.refreshToken);
+    });
+%}
+
+### 15. Самостоятельное повышение роли запрещено [400]
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{"name":"ЛР5","email":"inject-{{runId}}@example.com","password":"{{testPassword}}","role":"ADMIN"}
+
+> {%
+    client.test("Самостоятельное повышение роли запрещено", function () {
+        client.assert(response.status === 400, "Ожидался 400, получен " + response.status);
+        client.assert(!response.body.accessToken && !response.body.refreshToken, "Токены в ошибочном ответе");
+    });
+%}
+
+### 16. Повторная регистрация отклонена [409]
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{"name":"ЛР5 (тест)","email":"lab5-{{runId}}@example.com","password":"{{testPassword}}","deviceId":"registration-{{runId}}"}
+
+> {%
+    client.test("Повторная регистрация отклонена", function () {
+        client.assert(response.status === 409, "Ожидался 409, получен " + response.status);
+        client.assert(!response.body.accessToken && !response.body.refreshToken, "Токены в ошибочном ответе");
+    });
+%}
+
+### 17. Зарегистрированный пользователь имеет роль USER [200]
+GET {{baseUrl}}/api/auth/me
+Authorization: Bearer {{lab5UserAccess}}
+
+> {%
+    client.test("Зарегистрированный пользователь имеет роль USER", function () {
+        client.assert(response.status === 200, "Ожидался 200, получен " + response.status);
+        client.assert(response.body.role === "USER", "Ожидалась роль USER");
+        client.global.set("lab5UserId", response.body.userId);
+    });
+%}
+
+### 18. USER не может получить список пользователей [403]
+GET {{baseUrl}}/api/users
+Authorization: Bearer {{lab5UserAccess}}
+
+> {%
+    client.test("USER не может получить список пользователей", function () {
+        client.assert(response.status === 403, "Ожидался 403, получен " + response.status);
+        client.assert(!response.body.accessToken && !response.body.refreshToken, "Токены в ошибочном ответе");
+    });
+%}
+
+### 19. Удаление тестового пользователя администратором [204]
+DELETE {{baseUrl}}/api/users/{{lab5UserId}}
+Authorization: Bearer {{lab5CurrentAccess}}
+
+> {%
+    client.test("Удаление тестового пользователя администратором", function () {
+        client.assert(response.status === 204, "Ожидался 204, получен " + response.status);
+    });
+%}
+
+### 20. Access удалённого пользователя отклонён [401]
+GET {{baseUrl}}/api/auth/me
+Authorization: Bearer {{lab5UserAccess}}
+
+> {%
+    client.test("Access удалённого пользователя отклонён", function () {
+        client.assert(response.status === 401, "Ожидался 401, получен " + response.status);
+        client.assert(!response.body.accessToken && !response.body.refreshToken, "Токены в ошибочном ответе");
+    });
+%}

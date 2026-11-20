@@ -1,0 +1,24 @@
+spring:
+  application:
+    name: recycling-lab5
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://127.0.0.1:5432/recycling_lab5}
+    username: ${DB_USERNAME:recycling_app}
+    password: ${DB_PASSWORD}
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: true
+      fail-on-trailing-tokens: true
+      accept-float-as-int: false
+
+server:
+  address: 127.0.0.1
+  port: ${SERVER_PORT:8080}
+app:
+  jwt:
+    secret: ${JWT_SECRET}
+    access-ttl: ${JWT_ACCESS_TTL:15m}
+    refresh-ttl: ${JWT_REFRESH_TTL:7d}
+  admin:
+    email: ${ADMIN_EMAIL:}
+    password: ${ADMIN_PASSWORD:}

@@ -1,0 +1,52 @@
+ЛР5 · Приём вторсырья · вариант 11
+JWT Access/Refresh и управление сессиями
+
+1. Откройте папку lab5 в IntelliJ IDEA как проект Maven. JDK — 21.
+2. В pgAdmin создайте пустую базу recycling_lab5 от postgres. Один раз
+   выполните в ней database.sql. Скрипт использует роль recycling_app
+   из предыдущих лабораторных. Если её нет, создайте роль с LOGIN
+   и собственным паролем перед выполнением скрипта.
+3. В настройках запуска Lab5Application укажите переменные окружения:
+     DB_PASSWORD — пароль роли recycling_app
+     JWT_SECRET — случайный ключ Base64. В терминале: openssl rand -base64 32
+     ADMIN_EMAIL — например, admin@example.com
+     ADMIN_PASSWORD — личный пароль для первого администратора
+   Пароль администратора: от 12 символов, не больше 72 байт в UTF‑8,
+   с заглавной и строчной буквами, цифрой и специальным символом.
+   Держите ключ JWT постоянным между запусками. Смена ключа делает
+   ранее выданные токены недействительными. Первый ADMIN создаётся один раз.
+   Если нужно, переопределите DB_URL, DB_USERNAME и SERVER_PORT.
+4. Запустите Lab5Application. Адрес по умолчанию: http://127.0.0.1:8080.
+   Срок access по умолчанию 15 минут, refresh — 7 дней.
+   Изменить сроки можно переменными JWT_ACCESS_TTL и JWT_REFRESH_TTL
+   (например, 10m и 3d). Оба срока должны состоять из целых секунд,
+   refresh должен жить дольше access.
+
+Проверка из IntelliJ
+Скопируйте http-client.private.env.json.example в http-client.private.env.json.
+В локальной копии укажите adminEmail и adminPassword, выберите окружение local.
+requests.http проверяет выдачу, Bearer, обмен, повтор старого refresh,
+регистрацию и права. acceptance.http проверяет прежние операции приёма
+вторсырья после перехода на Bearer. Запускайте коллекции отдельно.
+Если изменили порт, обновите переменную адреса в начале коллекции.
+
+Контракт
+POST /auth/login    {"username":"email пользователя","password":"…","deviceId":"mac"}
+POST /auth/register {"name":"Имя","email":"user@example.com","password":"…","deviceId":"mac"}
+POST /auth/refresh  {"refreshToken":"…"}
+В первых двух запросах deviceId необязателен. Для /api/** передавайте
+Authorization: Bearer <accessToken>. Для /auth/refresh достаточно тела
+с refreshToken. Новый refresh выдаётся с прежним deviceId.
+GET /api/auth/me показывает текущую роль. Изменять роли и блокировать
+учётные записи по-прежнему может администратор.
+
+Проверка таблицы после запросов 01, 06 и 07 из requests.http
+Выполняйте в pgAdmin в базе recycling_lab5:
+SELECT id, username, device_id, status, access_token_expiry, refresh_token_expiry
+FROM public.user_sessions
+WHERE device_id LIKE 'lab5-%'
+ORDER BY refresh_token_expiry, id;
+У одной метки lab5-… после входа одна строка ACTIVE, после обновления —
+строки USED и ACTIVE, после повтора старого refresh — REVOKED и ACTIVE,
+количество строк остаётся равным двум. Колонка status меняется у старой строки.
+Строки с токенами храните в локальной БД. Этот SELECT их не выводит.
